@@ -105,11 +105,11 @@ def bellman_ford(graph: Graph, start: str,
 
 
 def _euclidean(graph: Graph, u: str, goal: str) -> float:
-    """Евристика A*: евклідова відстань між вершинами."""
-    pu = graph.get_pos(u)
-    pg = graph.get_pos(goal)
-    if pu and pg:
-        return math.hypot(pu[0] - pg[0], pu[1] - pg[1])
+    """
+    Евристика A*.
+    Для довільного зваженого графа використовується нульова евристика,
+    щоб алгоритм завжди коректно знаходив найкоротший шлях.
+    """
     return 0.0
 
 

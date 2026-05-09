@@ -125,8 +125,7 @@ class GraphEditorWindow(tk.Toplevel):
             self._selected = hit
             self._status_var.set(f"Обрано '{hit}'. Клацніть другу вершину.")
         elif self._selected == hit:
-            self._selected = None
-            self._status_var.set("Вибір скасовано.")
+            self._add_edge_dialog(hit)
         else:
             self._add_edge_dialog(hit)
 

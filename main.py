@@ -72,7 +72,6 @@ class MainApp(tk.Tk):
         self._last_path: List[str] = []
 
         self._build_ui()
-        self.after(200, self._show_instructions)
 
     # ══════════════════════════════════════════════
     #  Побудова інтерфейсу
@@ -358,35 +357,55 @@ class InstructionsWindow(tk.Toplevel):
     def __init__(self, master: tk.Tk) -> None:
         super().__init__(master)
         self.title("Інструкція користувача")
-        self.minsize(500, 500)
-        self.resizable(True, True)
+        self.geometry("700x500")
+        self.resizable(False, False)
+
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        self.lift()
-        self.focus_force()
+
         self._build()
 
     def _build(self) -> None:
-        frame = tk.Frame(self)
-        frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        frame = tk.Frame(self, padx=20, pady=20)
+        frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
-        sb = tk.Scrollbar(frame)
-        sb.grid(row=0, column=1, sticky="ns")
+        instruction_text = (
+            "ІНСТРУКЦІЯ КОРИСТУВАЧА\n\n"
+            "1. Оберіть тип графу: неорієнтований або орієнтований.\n\n"
+            "2. Введіть граф одним зі способів:\n"
+            "• Текстове введення: задайте вершини через пробіл, а ребра — кожне з нового рядка у форматі: звідки куди вага.\n"
+            "• Графічне введення: клік на вільному місці створює вершину, клік по двох вершинах створює ребро.\n\n"
+            "3. Введіть початкову та кінцеву вершини.\n\n"
+            "4. Оберіть алгоритм: Дейкстри, Беллмана-Форда або A*.\n\n"
+            "5. Натисніть кнопку «Знайти найкоротший шлях».\n\n"
+            "6. Результат можна зберегти у файл або переглянути графічно."
+        )
 
-        txt = tk.Text(frame, font=("Courier", 11),
-                       padx=16, pady=12, relief="flat",
-                       yscrollcommand=sb.set, wrap="word")
-        txt.grid(row=0, column=0, sticky="nsew")
-        sb.config(command=txt.yview)
+        label = tk.Label(
+            frame,
+            text=instruction_text,
+            justify="left",
+            anchor="nw",
+            font=("Helvetica", 13),
+            wraplength=640
+        )
+        label.grid(row=0, column=0, sticky="nsew")
 
-        txt.insert("1.0", INSTRUCTIONS)
-        txt.configure(state="disabled")
+        def update_wrap(event):
+            label.config(wraplength=event.width - 40)
 
-        tk.Button(self, text="Закрити", command=self.destroy,
-                   font=("Helvetica", 11), padx=16,
-                   ).grid(row=1, column=0, pady=10)
+        frame.bind("<Configure>", update_wrap)
+
+        tk.Button(
+            self,
+            text="Закрити",
+            command=self.destroy,
+            font=("Helvetica", 12),
+            padx=20,
+            pady=4
+        ).grid(row=1, column=0, pady=10)
 
 
 class TextInputWindow(tk.Toplevel):
