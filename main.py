@@ -23,6 +23,24 @@ ALGO_NAMES = {
     "astar":        "A*",
 }
 
+ALGO_COMPLEXITY = {
+    "dijkstra": {
+        "time":  "O((V + E) log V)",
+        "space": "O(V)",
+        "note":  "тільки невід'ємні ваги",
+    },
+    "bellman_ford": {
+        "time":  "O(V · E)",
+        "space": "O(V)",
+        "note":  "допускає від'ємні ваги, виявляє від'ємні цикли",
+    },
+    "astar": {
+        "time":  "O((V + E) log V) + O(V · E) для потенціалів",
+        "space": "O(V)",
+        "note":  "евристика h=0 або евклідова відстань",
+    },
+}
+
 INSTRUCTIONS = "\n".join([
     "ІНСТРУКЦІЯ КОРИСТУВАЧА",
     "=" * 50,
@@ -143,16 +161,19 @@ class MainApp(tk.Tk):
         # Нижні кнопки
         bf = tk.Frame(main)
         bf.grid(row=8, column=0, sticky="ew", pady=(6, 4))
-        bf.columnconfigure(1, weight=1)
+        bf.columnconfigure(2, weight=1)
         tk.Button(bf, text="Зберегти результат",
                   font=("Helvetica", 10), padx=10,
                   command=self._save_result).grid(row=0, column=0, sticky="w")
+        tk.Button(bf, text="Зберегти граф",
+                  font=("Helvetica", 10), padx=10,
+                  command=self._save_graph).grid(row=0, column=1, sticky="w", padx=6)
         tk.Button(bf, text="Візуалізувати граф",
                   font=("Helvetica", 10), padx=10,
-                  command=self._open_visualizer).grid(row=0, column=1, sticky="w", padx=10)
+                  command=self._open_visualizer).grid(row=0, column=2, sticky="w", padx=6)
         tk.Button(bf, text="Інструкція",
                   font=("Helvetica", 10), padx=10,
-                  command=self._show_instructions).grid(row=0, column=2, sticky="e")
+                  command=self._show_instructions).grid(row=0, column=3, sticky="e")
 
     def _divider(self, parent: tk.Frame, row: int) -> None:
         tk.Frame(parent, height=1, bg="#cccccc").grid(
@@ -365,14 +386,69 @@ class MainApp(tk.Tk):
         if not content:
             messagebox.showinfo("", "Немає результату для збереження.")
             return
+        if not self.graph:
+            messagebox.showinfo("", "Немає графу для збереження.")
+            return
         path = filedialog.asksaveasfilename(
             defaultextension=".txt",
             filetypes=[("Text files", "*.txt")],
             title="Зберегти результат")
-        if path:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(content)
-            messagebox.showinfo("Збережено", f"Файл збережено:\n{path}")
+        if not path:
+            return
+
+        # Зберегти результат разом з інформацією про граф
+        if self.graph:
+            graph_info = self._get_graph_info()
+            full_content = content + "\n\n" + graph_info
+        else:
+            full_content = content
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(full_content)
+        messagebox.showinfo("Збережено", f"Файл збережено:\n{path}")
+
+    def _get_graph_info(self) -> str:
+        """Сформувати текстовий опис введеного графу."""
+        d = "орієнтований" if self.graph.directed else "неорієнтований"
+        lines = [
+            "=" * 48,
+            "ВВЕДЕНИЙ ГРАФ",
+            "=" * 48,
+            f"Тип графу  : {d}",
+            f"Вершини    : {' '.join(self.graph.vertices.keys())}",
+            f"Вершин     : {len(self.graph.vertices)}",
+            f"Ребер      : {self.graph.edge_count()}",
+            "",
+            "Ребра (звідки  куди  вага):",
+        ]
+        for u, v, w in self.graph.get_edges():
+            lines.append(f"  {u}  ->  {v}  :  {w}")
+        return "\n".join(lines)
+
+    def _save_graph(self) -> None:
+        """Зберегти введений граф у текстовий файл."""
+        if not self.graph:
+            messagebox.showinfo("", "Спочатку введіть граф!")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt")],
+            title="Зберегти граф")
+        if not path:
+            return
+        lines = []
+        d = "орієнтований" if self.graph.directed else "неорієнтований"
+        lines.append(f"Тип графу: {d}")
+        lines.append(f"Вершини: {' '.join(self.graph.vertices.keys())}")
+        lines.append(f"Кількість вершин: {len(self.graph.vertices)}")
+        lines.append(f"Кількість ребер: {self.graph.edge_count()}")
+        lines.append("")
+        lines.append("Ребра (звідки  куди  вага):")
+        for u, v, w in self.graph.get_edges():
+            lines.append(f"  {u}  {v}  {w}")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        messagebox.showinfo("Збережено", f"Граф збережено:\n{path}")
 
     def _open_visualizer(self) -> None:
         if not self.graph:
@@ -481,8 +557,14 @@ class TextInputWindow(tk.Toplevel):
                     f"Вага '{ws}' виходить за межі допустимих значень.",
                     parent=self)
                 return
-            # Перевірка кількості знаків після коми
-            # Ігноруємо наукову нотацію (e, E) — вона не має "знаків після коми"
+            # Перевірка: ненульове значення не може бути меншим за 1e-15 за модулем
+            if w != 0 and abs(w) < 1e-15:
+                messagebox.showerror("Помилка",
+                    f"Вага '{ws}' занадто мала.\n"
+                    f"Мінімально допустиме значення за модулем: 1e-15",
+                    parent=self)
+                return
+            # Перевірка кількості знаків після коми (лише для звичайного запису)
             ws_clean = ws.lstrip('-')
             if '.' in ws_clean and 'e' not in ws_clean.lower():
                 decimal_part = ws_clean.split('.')[1]

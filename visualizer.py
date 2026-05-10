@@ -187,9 +187,15 @@ class GraphVisualizer(tk.Toplevel):
             on_path = (u, v) in path_edges or (v, u) in path_edges
             color = COLOR_PATH if on_path else "#666666"
             width = 4 if on_path else 1.5
+            vr = VERTEX_RADIUS
+
+            # Петля (ребро вершини до себе)
+            if u == v:
+                self._draw_loop(x1, y1, w, color, width, on_path)
+                continue
+
             d = math.hypot(x2 - x1, y2 - y1) or 1
             nx, ny = (x2 - x1) / d, (y2 - y1) / d
-            vr = VERTEX_RADIUS
             self._canvas.create_line(
                 x1 + nx * vr, y1 + ny * vr,
                 x2 - nx * (vr + 4), y2 - ny * (vr + 4),
@@ -203,6 +209,24 @@ class GraphVisualizer(tk.Toplevel):
                 fill=COLOR_PATH if on_path else "#333333",
                 font=("Helvetica", 9, "bold" if on_path else "normal"),
             )
+
+    def _draw_loop(self, x: float, y: float, w: float,
+                   color: str, width: float, on_path: bool) -> None:
+        """Намалювати петлю — дугу від вершини до себе."""
+        r = VERTEX_RADIUS
+        # Малюємо овал над вершиною
+        self._canvas.create_oval(
+            x - r, y - r * 3,
+            x + r, y - r,
+            outline=color, width=width, fill=""
+        )
+        # Вага петлі
+        self._canvas.create_text(
+            x + r + 8, y - r * 2,
+            text=f"{w:g}",
+            fill=COLOR_PATH if on_path else "#333333",
+            font=("Helvetica", 9, "bold" if on_path else "normal"),
+        )
 
     def _draw_vertices(self) -> None:
         path_set = set(self._path) if self._path else set()

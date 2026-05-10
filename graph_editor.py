@@ -125,6 +125,7 @@ class GraphEditorWindow(tk.Toplevel):
             self._selected = hit
             self._status_var.set(f"Обрано '{hit}'. Клацніть другу вершину.")
         elif self._selected == hit:
+            # Подвійний клік по одній вершині — петля
             self._add_edge_dialog(hit)
         else:
             self._add_edge_dialog(hit)
@@ -188,6 +189,20 @@ class GraphEditorWindow(tk.Toplevel):
             if not pu or not pv:
                 continue
             x1, y1 = pu; x2, y2 = pv
+
+            # Петля
+            if u == v:
+                r = VERTEX_RADIUS
+                self._canvas.create_oval(
+                    x1 - r, y1 - r * 3,
+                    x1 + r, y1 - r,
+                    outline="#333333", width=2, fill="")
+                self._canvas.create_text(
+                    x1 + r + 8, y1 - r * 2,
+                    text=f"{w:g}", fill="#000000",
+                    font=("Helvetica", 9, "bold"))
+                continue
+
             d = math.hypot(x2 - x1, y2 - y1) or 1
             nx, ny = (x2 - x1) / d, (y2 - y1) / d
             self._canvas.create_line(
