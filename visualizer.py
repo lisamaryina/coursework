@@ -5,12 +5,14 @@ visualizer.py — візуалізація графу та знайденого 
   • Вершини з координатами відображаються на своїх позиціях
   • Вершини без координат розміщуються по колу
   • Знайдений шлях виділяється кольором та товщиною ліній
+  • Збереження зображення у PNG та PS/PDF
 """
 
 from __future__ import annotations
 import math
 from typing import List
 import tkinter as tk
+from tkinter import filedialog, messagebox
 
 from graph import Graph
 
@@ -70,6 +72,7 @@ class GraphVisualizer(tk.Toplevel):
 
         self._build_legend()
         self._build_info_label()
+        self._build_save_button()
         self._draw()
 
     def _build_legend(self) -> None:
@@ -95,7 +98,65 @@ class GraphVisualizer(tk.Toplevel):
             info = "Шлях не знайдено"
         tk.Label(self, text=info,
                   font=("Helvetica", 9, "italic"),
-                  wraplength=CANVAS_W).pack(pady=(2, 8))
+                  wraplength=CANVAS_W).pack(pady=(2, 4))
+
+    def _build_save_button(self) -> None:
+        tk.Button(self,
+                  text="💾  Зберегти зображення як PNG",
+                  font=("Helvetica", 10), padx=10, pady=4,
+                  command=self._save_png,
+                  ).pack(pady=(0, 8))
+
+    # ── Збереження PNG ─────────────────────────────────────
+    def _save_png(self) -> None:
+        path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=[("PNG image", "*.png"), ("All files", "*.*")],
+            title="Зберегти візуалізацію")
+        if not path:
+            return
+        try:
+            # Спочатку зберігаємо як PostScript, потім конвертуємо у PNG
+            import os
+            ps_path = path.replace(".png", "_tmp.ps")
+            self._canvas.postscript(file=ps_path, colormode="color")
+
+            try:
+                from PIL import Image
+                img = Image.open(ps_path)
+                img.save(path, "PNG")
+                os.remove(ps_path)
+            except Exception:
+                # Якщо PIL не може відкрити PS — спробуємо через ImageGrab
+                os.remove(ps_path)
+                self._save_png_grab(path)
+
+            messagebox.showinfo("Збережено",
+                                f"Зображення збережено:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Помилка збереження", str(e))
+
+    def _save_png_grab(self, path: str) -> None:
+        """Альтернативний спосіб через скріншот canvas."""
+        try:
+            from PIL import ImageGrab
+            # Отримати координати canvas на екрані
+            self.update_idletasks()
+            x = self._canvas.winfo_rootx()
+            y = self._canvas.winfo_rooty()
+            w = self._canvas.winfo_width()
+            h = self._canvas.winfo_height()
+            img = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+            img.save(path, "PNG")
+        except Exception:
+            # Останній варіант — зберегти як EPS (векторний)
+            eps_path = path.replace(".png", ".eps")
+            self._canvas.postscript(file=eps_path, colormode="color")
+            messagebox.showinfo(
+                "Збережено як EPS",
+                f"PNG не вдалось створити.\n"
+                f"Збережено як векторний EPS:\n{eps_path}\n\n"
+                f"Відкрий у Preview або Illustrator.")
 
     # ── Малювання ──────────────────────────────────────────
     def _draw(self) -> None:

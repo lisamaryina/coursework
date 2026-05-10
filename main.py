@@ -1,9 +1,12 @@
 """
 main.py — головне вікно програми.
+
+Введення графу через матрицю суміжності або графічний редактор.
+A* підтримує введення координат вершин для евристики.
 """
 
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import time
@@ -29,16 +32,16 @@ INSTRUCTIONS = "\n".join([
     "",
     "КРОК 2. Введіть граф одним зі способів:",
     "",
-    "  [ Текстове введення ]",
-    "  - Вершини: через пробіл, напр.:  A B C D",
-    "  - Ребра: кожне на новому рядку:",
-    "    звідки  куди  вага   (напр.: A B 5)",
+    "  [ Матриця суміжності ]",
+    "  - Введіть вершини через пробіл (напр.: A B C)",
+    "  - Натисніть 'Побудувати матрицю'",
+    "  - Заповніть комірки: вага ребра або 0/порожньо",
+    "    якщо ребра немає",
+    "  - Натисніть 'Підтвердити'",
     "",
     "  [ Графічне введення ]",
     "  - Клік на вільному місці = нова вершина",
     "  - Клік по 1-й, потім 2-й вершині = ребро",
-    "    (введіть вагу у вікні що зявиться)",
-    "  - Кнопка 'Відмінити останнє ребро' = скасувати",
     "  - Кнопка 'Готово' = зберегти граф",
     "",
     "КРОК 3. Задайте початкову та кінцеву вершини.",
@@ -46,12 +49,17 @@ INSTRUCTIONS = "\n".join([
     "КРОК 4. Оберіть алгоритм:",
     "  - Дейкстри       : тільки невід'ємні ваги",
     "  - Беллмана-Форда : допускає від'ємні ваги",
-    "  - A*             : тільки невід'ємні ваги",
+    "  - A*             : від'ємні ваги тільки для",
+    "                     орієнтованого графу",
+    "",
+    "  Для A* можна задати координати вершин —",
+    "  тоді евристика = евклідова відстань.",
+    "  Без координат евристика = 0.",
     "",
     "КРОК 5. Натисніть 'Знайти найкоротший шлях'.",
     "",
-    "КРОК 6. Результат відображається у полі нижче.",
-    "  - 'Зберегти результат' — зберегти у .txt файл",
+    "КРОК 6. Результат у полі нижче.",
+    "  - 'Зберегти результат' — зберегти у .txt",
     "  - 'Візуалізувати граф' — відкрити вікно графу",
     "",
     "=" * 50,
@@ -62,14 +70,13 @@ class MainApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Знаходження найкоротшого шляху")
-        self.minsize(700, 600)
-
-        # Розтягування головної колонки
+        self.minsize(700, 580)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
         self.graph: Optional[Graph] = None
         self._last_path: List[str] = []
+        self._astar_coords: Dict[str, Tuple[float, float]] = {}
 
         self._build_ui()
 
@@ -77,15 +84,14 @@ class MainApp(tk.Tk):
     #  Побудова інтерфейсу
     # ══════════════════════════════════════════════
     def _build_ui(self) -> None:
-        # Головний контейнер — grid для правильного розтягування
         main = tk.Frame(self)
-        main.grid(row=0, column=0, sticky="nsew", padx=20, pady=10)
+        main.grid(row=0, column=0, sticky="nsew", padx=24, pady=12)
         main.columnconfigure(0, weight=1)
-        main.rowconfigure(4, weight=1)  # рядок з результатом розтягується
+        main.rowconfigure(7, weight=1)
 
-        # ── Заголовок
+        # Заголовок
         hdr = tk.Frame(main)
-        hdr.grid(row=0, column=0, sticky="ew", pady=(4, 8))
+        hdr.grid(row=0, column=0, sticky="ew", pady=(4, 10))
         hdr.columnconfigure(0, weight=1)
         tk.Label(hdr, text="Знаходження найкоротшого шляху",
                  font=("Helvetica", 16, "bold")).grid(row=0, column=0)
@@ -94,36 +100,33 @@ class MainApp(tk.Tk):
 
         self._divider(main, row=1)
 
-        # ── Блок 1: введення
+        # Блок 1: введення
         f1 = tk.LabelFrame(main, text="  1. Введення графу  ",
-                            font=("Helvetica", 11, "bold"),
-                            padx=16, pady=12)
+                            font=("Helvetica", 11, "bold"), padx=16, pady=12)
         f1.grid(row=2, column=0, sticky="ew", pady=4)
         f1.columnconfigure(1, weight=1)
         self._build_input_block(f1)
 
         self._divider(main, row=3)
 
-        # ── Блок 2: пошук
+        # Блок 2: пошук
         f2 = tk.LabelFrame(main, text="  2. Параметри пошуку  ",
-                            font=("Helvetica", 11, "bold"),
-                            padx=16, pady=12)
+                            font=("Helvetica", 11, "bold"), padx=16, pady=12)
         f2.grid(row=4, column=0, sticky="ew", pady=4)
         f2.columnconfigure(0, weight=1)
         self._build_search_block(f2)
 
-        # ── Кнопка запуску
+        # Кнопка запуску
         tk.Button(main, text="▶   Знайти найкоротший шлях",
-                   font=("Helvetica", 13, "bold"), pady=10,
-                   command=self._run_algorithm,
-                   ).grid(row=5, column=0, sticky="ew", pady=10)
+                  font=("Helvetica", 13, "bold"), pady=10,
+                  command=self._run_algorithm,
+                  ).grid(row=5, column=0, sticky="ew", pady=10)
 
         self._divider(main, row=6)
 
-        # ── Блок 3: результат (розтягується)
+        # Блок 3: результат
         f3 = tk.LabelFrame(main, text="  3. Результат  ",
-                            font=("Helvetica", 11, "bold"),
-                            padx=16, pady=12)
+                            font=("Helvetica", 11, "bold"), padx=16, pady=12)
         f3.grid(row=7, column=0, sticky="nsew", pady=4)
         f3.columnconfigure(0, weight=1)
         f3.rowconfigure(0, weight=1)
@@ -131,94 +134,105 @@ class MainApp(tk.Tk):
 
         self._result_text = tk.Text(
             f3, state="disabled",
-            font=("Courier", 11), relief="solid", bd=1,
-            height=8,
-        )
+            font=("Courier", 11), relief="solid", bd=1, height=8)
         self._result_text.grid(row=0, column=0, sticky="nsew")
         sb = tk.Scrollbar(f3, command=self._result_text.yview)
         sb.grid(row=0, column=1, sticky="ns")
         self._result_text.configure(yscrollcommand=sb.set)
 
-        # ── Нижні кнопки
+        # Нижні кнопки
         bf = tk.Frame(main)
         bf.grid(row=8, column=0, sticky="ew", pady=(6, 4))
         bf.columnconfigure(1, weight=1)
         tk.Button(bf, text="Зберегти результат",
-                   font=("Helvetica", 10), padx=10,
-                   command=self._save_result).grid(row=0, column=0, sticky="w")
+                  font=("Helvetica", 10), padx=10,
+                  command=self._save_result).grid(row=0, column=0, sticky="w")
         tk.Button(bf, text="Візуалізувати граф",
-                   font=("Helvetica", 10), padx=10,
-                   command=self._open_visualizer).grid(row=0, column=1, sticky="w", padx=10)
+                  font=("Helvetica", 10), padx=10,
+                  command=self._open_visualizer).grid(row=0, column=1, sticky="w", padx=10)
         tk.Button(bf, text="Інструкція",
-                   font=("Helvetica", 10), padx=10,
-                   command=self._show_instructions).grid(row=0, column=2, sticky="e")
+                  font=("Helvetica", 10), padx=10,
+                  command=self._show_instructions).grid(row=0, column=2, sticky="e")
 
     def _divider(self, parent: tk.Frame, row: int) -> None:
         tk.Frame(parent, height=1, bg="#cccccc").grid(
             row=row, column=0, sticky="ew", pady=2)
 
     def _build_input_block(self, parent: tk.Frame) -> None:
-        # Тип графу
         tk.Label(parent, text="Тип графу:",
-                  font=("Helvetica", 11)).grid(row=0, column=0, sticky="w")
+                 font=("Helvetica", 11)).grid(row=0, column=0, sticky="w")
         type_frame = tk.Frame(parent)
         type_frame.grid(row=0, column=1, sticky="w", padx=(12, 0))
         self._gtype = tk.StringVar(value="undirected")
         tk.Radiobutton(type_frame, text="Неорієнтований",
-                        variable=self._gtype, value="undirected",
-                        font=("Helvetica", 11)).pack(side="left")
+                       variable=self._gtype, value="undirected",
+                       font=("Helvetica", 11)).pack(side="left")
         tk.Radiobutton(type_frame, text="Орієнтований",
-                        variable=self._gtype, value="directed",
-                        font=("Helvetica", 11)).pack(side="left", padx=(16, 0))
+                       variable=self._gtype, value="directed",
+                       font=("Helvetica", 11)).pack(side="left", padx=(16, 0))
 
-        # Кнопки введення
         tk.Label(parent, text="Спосіб введення:",
-                  font=("Helvetica", 11)).grid(row=1, column=0, sticky="w", pady=(10, 0))
+                 font=("Helvetica", 11)).grid(row=1, column=0, sticky="w", pady=(10, 0))
         btn_frame = tk.Frame(parent)
         btn_frame.grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(10, 0))
         tk.Button(btn_frame, text="   Текстове введення   ",
-                   font=("Helvetica", 11), padx=6,
-                   command=self._open_text_input).pack(side="left")
+                  font=("Helvetica", 11), padx=6,
+                  command=self._open_text_input).pack(side="left")
         tk.Button(btn_frame, text="   Графічне введення   ",
-                   font=("Helvetica", 11), padx=6,
-                   command=self._open_graph_editor).pack(side="left", padx=(12, 0))
+                  font=("Helvetica", 11), padx=6,
+                  command=self._open_graph_editor).pack(side="left", padx=(12, 0))
 
-        # Статус
         self._lbl_graph_status = tk.Label(
             parent, text="Граф не задано", fg="red",
             font=("Helvetica", 10, "italic"))
         self._lbl_graph_status.grid(row=2, column=0, columnspan=2,
-                                     sticky="w", pady=(8, 0))
+                                    sticky="w", pady=(8, 0))
 
     def _build_search_block(self, parent: tk.Frame) -> None:
-        # Вершини
         nodes_frame = tk.Frame(parent)
         nodes_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        nodes_frame.columnconfigure(1, weight=0)
-        nodes_frame.columnconfigure(3, weight=0)
-
         tk.Label(nodes_frame, text="Початкова вершина:",
-                  font=("Helvetica", 11)).grid(row=0, column=0, sticky="w")
+                 font=("Helvetica", 11)).grid(row=0, column=0, sticky="w")
         self._entry_start = tk.Entry(nodes_frame, width=8, font=("Helvetica", 12))
         self._entry_start.grid(row=0, column=1, sticky="w", padx=(10, 30))
-
         tk.Label(nodes_frame, text="Кінцева вершина:",
-                  font=("Helvetica", 11)).grid(row=0, column=2, sticky="w")
+                 font=("Helvetica", 11)).grid(row=0, column=2, sticky="w")
         self._entry_end = tk.Entry(nodes_frame, width=8, font=("Helvetica", 12))
         self._entry_end.grid(row=0, column=3, sticky="w", padx=(10, 0))
 
-        # Алгоритм
         algo_frame = tk.Frame(parent)
         algo_frame.grid(row=1, column=0, sticky="ew")
         tk.Label(algo_frame, text="Алгоритм:",
-                  font=("Helvetica", 11)).pack(side="left")
+                 font=("Helvetica", 11)).pack(side="left")
         self._algo_var = tk.StringVar(value="dijkstra")
         for label, value in [("Дейкстри", "dijkstra"),
-                               ("Беллмана-Форда", "bellman_ford"),
-                               ("A*", "astar")]:
+                              ("Беллмана-Форда", "bellman_ford"),
+                              ("A*", "astar")]:
             tk.Radiobutton(algo_frame, text=label,
-                            variable=self._algo_var, value=value,
-                            font=("Helvetica", 11)).pack(side="left", padx=(14, 0))
+                           variable=self._algo_var, value=value,
+                           font=("Helvetica", 11),
+                           command=self._on_algo_change).pack(side="left", padx=(14, 0))
+
+        # Кнопка координат для A* (спочатку прихована)
+        self._coords_frame = tk.Frame(parent)
+        self._coords_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        self._btn_coords = tk.Button(
+            self._coords_frame,
+            text="📍  Задати координати вершин для евристики (необов'язково)",
+            font=("Helvetica", 10), padx=6,
+            command=self._open_coords_input)
+        self._btn_coords.pack(side="left")
+        self._lbl_coords_status = tk.Label(
+            self._coords_frame,
+            text="", font=("Helvetica", 9, "italic"), fg="#555555")
+        self._lbl_coords_status.pack(side="left", padx=(10, 0))
+        self._coords_frame.grid_remove()  # прихована до вибору A*
+
+    def _on_algo_change(self) -> None:
+        if self._algo_var.get() == "astar":
+            self._coords_frame.grid()
+        else:
+            self._coords_frame.grid_remove()
 
     # ══════════════════════════════════════════════
     #  Введення графу
@@ -236,6 +250,8 @@ class MainApp(tk.Tk):
 
     def _receive_graph(self, graph: Graph) -> None:
         self.graph = graph
+        self._astar_coords = {}
+        self._lbl_coords_status.config(text="")
         self._update_graph_status()
 
     def _update_graph_status(self) -> None:
@@ -249,6 +265,25 @@ class MainApp(tk.Tk):
             self._lbl_graph_status.config(text="Граф не задано", fg="red")
 
     # ══════════════════════════════════════════════
+    #  Координати для A*
+    # ══════════════════════════════════════════════
+    def _open_coords_input(self) -> None:
+        if not self.graph:
+            messagebox.showerror("Помилка", "Спочатку введіть граф!")
+            return
+        CoordsInputWindow(self, vertices=list(self.graph.vertices.keys()),
+                          current=self._astar_coords,
+                          on_done=self._receive_coords)
+
+    def _receive_coords(self, coords: Dict[str, Tuple[float, float]]) -> None:
+        self._astar_coords = coords
+        if coords:
+            self._lbl_coords_status.config(
+                text=f"✔ Координати задано для {len(coords)} вершин", fg="green")
+        else:
+            self._lbl_coords_status.config(text="", fg="#555555")
+
+    # ══════════════════════════════════════════════
     #  Алгоритм
     # ══════════════════════════════════════════════
     def _run_algorithm(self) -> None:
@@ -258,11 +293,11 @@ class MainApp(tk.Tk):
         start = self._entry_start.get().strip()
         end   = self._entry_end.get().strip()
 
-        if algo in ("dijkstra", "astar") and self.graph.has_negative_weights():
+        if algo == "dijkstra" and self.graph.has_negative_weights():
             messagebox.showerror(
                 "Помилка",
-                f"Алгоритм {ALGO_NAMES[algo]} не підтримує від'ємні ваги.\n"
-                "Оберіть алгоритм Беллмана-Форда.")
+                "Алгоритм Дейкстри не підтримує від'ємні ваги.\n"
+                "Оберіть Беллмана-Форда або A*.")
             return
 
         t0 = time.perf_counter()
@@ -272,7 +307,8 @@ class MainApp(tk.Tk):
             elif algo == "bellman_ford":
                 path, dist = bellman_ford(self.graph, start, end)
             else:
-                path, dist = astar(self.graph, start, end)
+                coords = self._astar_coords if self._astar_coords else None
+                path, dist = astar(self.graph, start, end, coords=coords)
         except ValueError as e:
             messagebox.showerror("Помилка виконання", str(e))
             return
@@ -299,25 +335,23 @@ class MainApp(tk.Tk):
         return True
 
     def _display_result(self, start: str, end: str, algo: str,
-                         path: List[str], dist: float, elapsed: float) -> None:
+                        path: List[str], dist: float, elapsed: float) -> None:
         sep = "-" * 48
-        lines = [
-            f"Алгоритм : {ALGO_NAMES[algo]}",
-            f"Початок  : {start}     Кінець : {end}",
-            sep,
-        ]
+        lines = [f"Алгоритм : {ALGO_NAMES[algo]}"]
+        if algo == "astar" and self._astar_coords:
+            lines.append("Евристика: евклідова відстань")
+        elif algo == "astar":
+            lines.append("Евристика: h = 0 (координати не задано)")
+        lines += [f"Початок  : {start}     Кінець : {end}", sep]
         if path:
-            lines += [
-                f"Шлях     : {' → '.join(path)}",
-                f"Довжина  : {dist:.4f}",
-            ]
+            lines += [f"Шлях     : {' → '.join(path)}",
+                      f"Довжина  : {dist:.15f}"]
         else:
             lines.append(f"Шляху між '{start}' та '{end}' не існує.")
-        lines += [
-            sep,
-            f"Час виконання : {elapsed * 1000:.4f} мс",
-            f"Вершин: {len(self.graph.vertices)}   Ребер: {self.graph.edge_count()}",
-        ]
+        lines += [sep,
+                  f"Час виконання : {elapsed * 1000:.6f} мс",
+                  f"Вершин: {len(self.graph.vertices)}   "
+                  f"Ребер: {self.graph.edge_count()}"]
         self._result_text.configure(state="normal")
         self._result_text.delete("1.0", "end")
         self._result_text.insert("1.0", "\n".join(lines))
@@ -351,72 +385,19 @@ class MainApp(tk.Tk):
 
 
 # ══════════════════════════════════════════════════════
-#  Допоміжні вікна
+#  Вікно текстового введення
 # ══════════════════════════════════════════════════════
-class InstructionsWindow(tk.Toplevel):
-    def __init__(self, master: tk.Tk) -> None:
-        super().__init__(master)
-        self.title("Інструкція користувача")
-        self.geometry("700x500")
-        self.resizable(False, False)
-
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
-
-        self._build()
-
-    def _build(self) -> None:
-        frame = tk.Frame(self, padx=20, pady=20)
-        frame.grid(row=0, column=0, sticky="nsew")
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(0, weight=1)
-
-        instruction_text = (
-            "ІНСТРУКЦІЯ КОРИСТУВАЧА\n\n"
-            "1. Оберіть тип графу: неорієнтований або орієнтований.\n\n"
-            "2. Введіть граф одним зі способів:\n"
-            "• Текстове введення: задайте вершини через пробіл, а ребра — кожне з нового рядка у форматі: звідки куди вага.\n"
-            "• Графічне введення: клік на вільному місці створює вершину, клік по двох вершинах створює ребро.\n\n"
-            "3. Введіть початкову та кінцеву вершини.\n\n"
-            "4. Оберіть алгоритм: Дейкстри, Беллмана-Форда або A*.\n\n"
-            "5. Натисніть кнопку «Знайти найкоротший шлях».\n\n"
-            "6. Результат можна зберегти у файл або переглянути графічно."
-        )
-
-        label = tk.Label(
-            frame,
-            text=instruction_text,
-            justify="left",
-            anchor="nw",
-            font=("Helvetica", 13),
-            wraplength=640
-        )
-        label.grid(row=0, column=0, sticky="nsew")
-
-        def update_wrap(event):
-            label.config(wraplength=event.width - 40)
-
-        frame.bind("<Configure>", update_wrap)
-
-        tk.Button(
-            self,
-            text="Закрити",
-            command=self.destroy,
-            font=("Helvetica", 12),
-            padx=20,
-            pady=4
-        ).grid(row=1, column=0, pady=10)
-
-
 class TextInputWindow(tk.Toplevel):
+    """Введення графу через список ребер."""
+
     def __init__(self, master: tk.Tk, directed: bool,
                  on_done: callable) -> None:
         super().__init__(master)
         self.title("Текстове введення графу")
-        self.minsize(500, 400)
+        self.minsize(500, 420)
         self.resizable(True, True)
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(3, weight=1)
         self._directed = directed
         self._on_done = on_done
         self.lift()
@@ -424,49 +405,48 @@ class TextInputWindow(tk.Toplevel):
         self._build()
 
     def _build(self) -> None:
-        # Вершини
         tk.Label(self, text="Вершини (через пробіл):",
-                  font=("Helvetica", 11)).grid(
+                 font=("Helvetica", 11)).grid(
             row=0, column=0, sticky="w", padx=16, pady=(14, 2))
         self._entry_vertices = tk.Entry(self, font=("Helvetica", 11))
         self._entry_vertices.grid(
-            row=1, column=0, sticky="ew", padx=16, pady=(0, 10))
+            row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
         self._entry_vertices.focus_set()
 
-        # Ребра
         tk.Label(self, text="Ребра (кожне на новому рядку:  звідки  куди  вага):",
-                  font=("Helvetica", 11)).grid(
+                 font=("Helvetica", 11)).grid(
             row=2, column=0, sticky="w", padx=16)
 
         edge_frame = tk.Frame(self)
         edge_frame.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 4))
         edge_frame.columnconfigure(0, weight=1)
         edge_frame.rowconfigure(0, weight=1)
-        self.rowconfigure(3, weight=1)
 
         sb = tk.Scrollbar(edge_frame)
         sb.grid(row=0, column=1, sticky="ns")
         self._text_edges = tk.Text(edge_frame, font=("Courier", 11),
-                                    yscrollcommand=sb.set, height=8)
+                                   yscrollcommand=sb.set, height=8)
         self._text_edges.grid(row=0, column=0, sticky="nsew")
         sb.config(command=self._text_edges.yview)
 
-        tk.Label(self, text="Приклад: A B 5   або   1 2 3.5",
-                  font=("Helvetica", 10, "italic")).grid(
+        tk.Label(self, text="Приклад: A B 5   або   1 2 -3.5",
+                 font=("Helvetica", 10, "italic")).grid(
             row=4, column=0, sticky="w", padx=16)
 
         tk.Button(self, text="Підтвердити", command=self._confirm,
-                   font=("Helvetica", 12), pady=8).grid(
-            row=5, column=0, pady=14)
+                  font=("Helvetica", 12), pady=8).grid(
+            row=5, column=0, pady=12)
 
     def _confirm(self) -> None:
         raw_v = self._entry_vertices.get().strip()
         if not raw_v:
             messagebox.showerror("Помилка", "Введіть вершини!", parent=self)
             return
-        vertices = [v.strip() for v in raw_v.replace(",", " ").split() if v.strip()]
+        vertices = [v.strip() for v in raw_v.replace(",", " ").split()
+                    if v.strip()]
         if len(vertices) != len(set(vertices)):
-            messagebox.showerror("Помилка", "Вершини мають бути унікальними!", parent=self)
+            messagebox.showerror("Помилка", "Вершини мають бути унікальними!",
+                                 parent=self)
             return
         g = Graph(directed=self._directed)
         for v in vertices:
@@ -482,22 +462,245 @@ class TextInputWindow(tk.Toplevel):
                 return
             u, v, ws = parts
             if u not in g.vertices:
-                messagebox.showerror("Помилка", f"Вершина '{u}' не існує.", parent=self)
+                messagebox.showerror("Помилка", f"Вершина '{u}' не існує.",
+                                     parent=self)
                 return
             if v not in g.vertices:
-                messagebox.showerror("Помилка", f"Вершина '{v}' не існує.", parent=self)
+                messagebox.showerror("Помилка", f"Вершина '{v}' не існує.",
+                                     parent=self)
                 return
             try:
                 w = float(ws)
             except ValueError:
-                messagebox.showerror("Помилка", f"'{ws}' не є числом!", parent=self)
+                messagebox.showerror("Помилка", f"'{ws}' не є числом!",
+                                     parent=self)
                 return
+            import math
+            if math.isinf(w) or math.isnan(w):
+                messagebox.showerror("Помилка",
+                    f"Вага '{ws}' виходить за межі допустимих значень.",
+                    parent=self)
+                return
+            # Перевірка кількості знаків після коми
+            # Ігноруємо наукову нотацію (e, E) — вона не має "знаків після коми"
+            ws_clean = ws.lstrip('-')
+            if '.' in ws_clean and 'e' not in ws_clean.lower():
+                decimal_part = ws_clean.split('.')[1]
+                if len(decimal_part) > 15:
+                    messagebox.showerror("Помилка",
+                        f"Вага '{ws}' має більше 15 знаків після коми.\n"
+                        f"Максимально допустимо: 15 знаків після коми.",
+                        parent=self)
+                    return
             g.add_edge(u, v, w)
         self._on_done(g)
         self.destroy()
         messagebox.showinfo(
             "Готово",
             f"Граф задано: {len(g.vertices)} вершин, {g.edge_count()} ребер.")
+
+
+# ══════════════════════════════════════════════════════
+#  Вікно координат для A*
+# ══════════════════════════════════════════════════════
+class CoordsInputWindow(tk.Toplevel):
+    """Введення координат вершин для евристики A*."""
+
+    def __init__(self, master: tk.Tk, vertices: List[str],
+                 current: Dict[str, Tuple[float, float]],
+                 on_done: callable) -> None:
+        super().__init__(master)
+        self.title("Координати вершин для A*")
+        self.resizable(False, False)
+        self._vertices = vertices
+        self._current = current
+        self._on_done = on_done
+        self._x_entries: Dict[str, tk.Entry] = {}
+        self._y_entries: Dict[str, tk.Entry] = {}
+        self.lift()
+        self.focus_force()
+        self._build()
+
+    def _build(self) -> None:
+        tk.Label(self,
+                 text="Задайте координати вершин для евклідової евристики.\n"
+                      "Залиште порожнім — евристика h=0 для цієї вершини.",
+                 font=("Helvetica", 10, "italic"),
+                 justify="left").pack(padx=16, pady=(12, 8))
+
+        # Заголовок
+        hdr = tk.Frame(self)
+        hdr.pack(fill="x", padx=16)
+        tk.Label(hdr, text="Вершина", width=10,
+                 font=("Helvetica", 10, "bold")).pack(side="left")
+        tk.Label(hdr, text="X", width=12,
+                 font=("Helvetica", 10, "bold")).pack(side="left", padx=(0, 4))
+        tk.Label(hdr, text="Y", width=12,
+                 font=("Helvetica", 10, "bold")).pack(side="left")
+
+        # Рядки для кожної вершини
+        for v in self._vertices:
+            row = tk.Frame(self)
+            row.pack(fill="x", padx=16, pady=2)
+            tk.Label(row, text=v, width=10,
+                     font=("Helvetica", 11, "bold")).pack(side="left")
+            ex = tk.Entry(row, width=12, font=("Helvetica", 11),
+                           justify="center")
+            ex.pack(side="left", padx=(0, 4))
+            ey = tk.Entry(row, width=12, font=("Helvetica", 11),
+                           justify="center")
+            ey.pack(side="left")
+            # Заповнити поточні значення якщо є
+            if v in self._current:
+                ex.insert(0, str(self._current[v][0]))
+                ey.insert(0, str(self._current[v][1]))
+            self._x_entries[v] = ex
+            self._y_entries[v] = ey
+
+        btn_frame = tk.Frame(self)
+        btn_frame.pack(pady=14)
+        tk.Button(btn_frame, text="Підтвердити",
+                  font=("Helvetica", 11), padx=10,
+                  command=self._confirm).pack(side="left", padx=6)
+        tk.Button(btn_frame, text="Скинути все",
+                  font=("Helvetica", 11), padx=10,
+                  command=self._clear).pack(side="left", padx=6)
+
+    def _confirm(self) -> None:
+        coords: Dict[str, Tuple[float, float]] = {}
+        for v in self._vertices:
+            rx = self._x_entries[v].get().strip()
+            ry = self._y_entries[v].get().strip()
+            if not rx and not ry:
+                continue
+            try:
+                x = float(rx)
+                y = float(ry)
+            except ValueError:
+                messagebox.showerror(
+                    "Помилка",
+                    f"Некоректні координати для вершини '{v}'.\n"
+                    "Введіть числа або залиште поля порожніми.",
+                    parent=self)
+                return
+            coords[v] = (x, y)
+        self._on_done(coords)
+        self.destroy()
+
+    def _clear(self) -> None:
+        for v in self._vertices:
+            self._x_entries[v].delete(0, "end")
+            self._y_entries[v].delete(0, "end")
+
+
+# ══════════════════════════════════════════════════════
+#  Вікно інструкції
+# ══════════════════════════════════════════════════════
+class InstructionsWindow(tk.Toplevel):
+    STEPS = [
+        ("1. Тип графу",
+         "Оберіть тип:\n"
+         "  • Неорієнтований — ребра двосторонні\n"
+         "  • Орієнтований   — ребра мають напрямок"),
+
+        ("2. Введення графу",
+         "[ Текстове введення ]\n"
+         "  • Вершини: через пробіл, напр.: A B C D\n"
+         "  • Ребра: кожне на новому рядку:\n"
+         "    звідки  куди  вага   (напр.: A B 5)\n\n"
+         "[ Графічне введення ]\n"
+         "  • Клік на вільному місці = нова вершина\n"
+         "  • Клік по 1-й, потім 2-й вершині = ребро\n"
+         "  • 'Готово' = зберегти граф"),
+
+        ("3. Вершини пошуку",
+         "Введіть назви початкової та кінцевої вершин."),
+
+        ("4. Алгоритм",
+         "  • Дейкстри       — тільки невід'ємні ваги\n"
+         "  • Беллмана-Форда — допускає від'ємні ваги\n"
+         "  • A*             — від'ємні ваги тільки\n"
+         "                     для орієнтованого графу\n\n"
+         "Для A* можна задати координати вершин.\n"
+         "Тоді евристика = евклідова відстань до кінця.\n"
+         "Без координат — h = 0."),
+
+        ("5. Запуск",
+         "Натисніть «▶  Знайти найкоротший шлях»."),
+
+        ("6. Результат",
+         "  • 'Зберегти результат' — зберегти у .txt\n"
+         "  • 'Візуалізувати граф' — відкрити вікно"),
+    ]
+
+    def __init__(self, master: tk.Tk) -> None:
+        super().__init__(master)
+        self.title("Інструкція користувача")
+        self.minsize(520, 480)
+        self.resizable(True, True)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        self.lift()
+        self.focus_force()
+        self._build()
+
+    def _build(self) -> None:
+        outer = tk.Frame(self)
+        outer.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(outer, highlightthickness=0)
+        sb = tk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.grid(row=0, column=1, sticky="ns")
+        canvas.grid(row=0, column=0, sticky="nsew")
+
+        inner = tk.Frame(canvas)
+        inner.columnconfigure(0, weight=1)
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        tk.Label(inner, text="Інструкція користувача",
+                 font=("Helvetica", 15, "bold")).grid(
+            row=0, column=0, sticky="w", padx=16, pady=(14, 4))
+        tk.Frame(inner, height=2, bg="#4299e1").grid(
+            row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
+
+        for i, (title, body) in enumerate(self.STEPS):
+            block = tk.Frame(inner)
+            block.grid(row=i + 2, column=0, sticky="ew", padx=16, pady=(0, 10))
+            block.columnconfigure(0, weight=1)
+            tk.Label(block, text=title, font=("Helvetica", 12, "bold"),
+                     anchor="w").grid(row=0, column=0, sticky="ew")
+            tk.Frame(block, height=1, bg="#dddddd").grid(
+                row=1, column=0, sticky="ew", pady=(2, 6))
+            tk.Label(block, text=body, font=("Helvetica", 11),
+                     justify="left", anchor="w",
+                     wraplength=460).grid(row=2, column=0, sticky="w")
+
+        inner.update_idletasks()
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        canvas.bind("<Configure>",
+                    lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def _scroll(event):
+            try:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except tk.TclError:
+                pass
+        self._scroll_binding = canvas.bind_all("<MouseWheel>", _scroll)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self) -> None:
+        try:
+            self.unbind_all("<MouseWheel>")
+        except tk.TclError:
+            pass
+        self.destroy()
+
+        tk.Button(self, text="Закрити", command=self.destroy,
+                  font=("Helvetica", 11), padx=20, pady=4,
+                  ).grid(row=1, column=0, pady=(0, 12))
 
 
 if __name__ == "__main__":
